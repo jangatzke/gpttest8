@@ -632,3 +632,218 @@ class TestArgumentParser:
         p = build_parser()
         args = p.parse_args(["test.log", "--task", "42"])
         assert args.task == 42
+
+
+# ==================== Tests: Real-World Fixtures ====================
+
+
+class TestRealWorldFixtures:
+    """Tests using real-world log data collected from the internet."""
+
+    def test_parse_speculative_decoding_log(self, tmp_path: Path):
+        """Parse a server log with speculative decoding (NGRAM/MTP)."""
+        from fixtures import llama_cpp_server_speculative_decoding_log
+        p = tmp_path / "spec.log"
+        p.write_text(llama_cpp_server_speculative_decoding_log())
+        parser = LogParser()
+        tasks = parser.parse_file(str(p))
+        # Two complete tasks
+        assert len(tasks) == 2
+        by_id = {t.task_id: t for t in tasks}
+        # Task 100
+        assert 100 in by_id
+        t100 = by_id[100]
+        assert t100.is_complete is True
+        assert t100.prompt_tokens == 550
+        assert abs(t100.prompt_tokens_per_second - 500.0) < 0.1
+        assert t100.eval_tokens == 275
+        assert abs(t100.eval_tokens_per_second - 50.0) < 0.1
+        assert t100.graphs_reused == 25
+        assert abs(t100.draft_acceptance - 0.74177) < 0.001
+        assert t100.draft_accepted == 1126
+        assert t100.draft_generated == 1518
+        assert abs(t100.mean_len - 5.85) < 0.1
+        assert t100.n_tokens == 825
+        assert t100.truncated == 0
+        # Task 200
+        assert 200 in by_id
+        t200 = by_id[200]
+        assert t200.is_complete is True
+        assert t200.prompt_tokens == 600
+        assert t200.eval_tokens == 300
+        assert abs(t200.draft_acceptance - 0.65) < 0.001
+        assert t200.draft_accepted == 195
+        assert t200.draft_generated == 300
+        assert abs(t200.mean_len - 3.90) < 0.1
+
+    def test_parse_prefix_match_log(self, tmp_path: Path):
+        """Parse server log with KV-cache prefix-match hits (zero-token prompts)."""
+        from fixtures import llama_cpp_prefix_match_log
+        p = tmp_path / "prefix.log"
+        p.write_text(llama_cpp_prefix_match_log())
+        parser = LogParser()
+        tasks = parser.parse_file(str(p))
+        # Three tasks: task 0 (full), task 1 (prefix match), task 2 (prefix match)
+        assert len(tasks) == 3
+        by_id = {t.task_id: t for t in tasks}
+        # Task 0: full prompt
+        assert by_id[0].prompt_tokens == 1000
+        assert by_id[0].eval_tokens == 75
+        # Task 1: prefix match (0 tokens prompt)
+        assert by_id[1].prompt_tokens == 0
+        assert by_id[1].eval_tokens == 77
+        # Task 2: prefix match (0 tokens prompt)
+        assert by_id[2].prompt_tokens == 0
+        assert by_id[2].eval_tokens == 70
+
+    def test_parse_parallel_requests_log(self, tmp_path: Path):
+        """Parse server log with parallel requests from multiple slots."""
+        from fixtures import llama_cpp_parallel_requests_log
+        p = tmp_path / "parallel.log"
+        p.write_text(llama_cpp_parallel_requests_log())
+        parser = LogParser()
+        tasks = parser.parse_file(str(p))
+        assert len(tasks) == 3
+        by_id = {t.task_id: t for t in tasks}
+        # Task 0 (slot 0)
+        assert by_id[0].prompt_tokens == 750
+        assert by_id[0].eval_tokens == 150
+        assert by_id[0].truncated == 0
+        # Task 1 (slot 1) - truncated
+        assert by_id[1].prompt_tokens == 800
+        assert by_id[1].eval_tokens == 160
+        assert by_id[1].truncated == 1
+        # Task 2 (slot 0 again)
+        assert by_id[2].prompt_tokens == 700
+        assert by_id[2].eval_tokens == 125
+
+    def test_parse_gpu_offload_log(self, tmp_path: Path):
+        """Parse server log from GPU offloaded RTX 6000 with speculative decoding."""
+        from fixtures import llama_cpp_gpu_offload_log
+        p = tmp_path / "gpu.log"
+        p.write_text(llama_cpp_gpu_offload_log())
+        parser = LogParser()
+        tasks = parser.parse_file(str(p))
+        assert len(tasks) == 1
+        t = tasks[0]
+        assert t.task_id == 1768
+        assert t.prompt_tokens == 18
+        assert abs(t.prompt_tokens_per_second - 8.67) < 0.1
+        assert t.eval_tokens == 128
+        assert abs(t.eval_tokens_per_second - 7.11) < 0.1
+        assert abs(t.draft_acceptance - 0.94156) < 0.001
+        assert t.draft_accepted == 7556
+        assert t.draft_generated == 8026
+        assert abs(t.mean_len - 9.42) < 0.1
+
+    def test_parse_dflash_log(self, tmp_path: Path):
+        """Parse server log with DFlash speculative decoding (low acceptance rate)."""
+        from fixtures import llama_cpp_dflash_log
+        p = tmp_path / "dflash.log"
+        p.write_text(llama_cpp_dflash_log())
+        parser = LogParser()
+        tasks = parser.parse_file(str(p))
+        assert len(tasks) == 1
+        t = tasks[0]
+        assert t.task_id == 56
+        assert t.prompt_tokens == 17
+        assert abs(t.prompt_tokens_per_second - 79.49) < 0.1
+        assert t.eval_tokens == 886
+        assert abs(t.eval_tokens_per_second - 5.82) < 0.1
+        assert abs(t.draft_acceptance - 0.09722) < 0.001
+        assert t.draft_accepted == 86
+        assert t.draft_generated == 885
+        assert abs(t.mean_len - 1.05) < 0.1
+
+    def test_parse_system_info_log(self, tmp_path: Path):
+        """Parse server log with system info lines that should be ignored."""
+        from fixtures import llama_cpp_system_info_log
+        p = tmp_path / "system.log"
+        p.write_text(llama_cpp_system_info_log())
+        parser = LogParser()
+        tasks = parser.parse_file(str(p))
+        assert len(tasks) == 1
+        t = tasks[0]
+        assert t.task_id == 0
+        assert t.prompt_tokens == 500
+        assert t.eval_tokens == 100
+        assert t.is_complete is True
+
+    def test_parse_truncated_log(self, tmp_path: Path):
+        """Parse log with truncated output (max tokens reached)."""
+        from fixtures import llama_cpp_truncated_log
+        p = tmp_path / "truncated.log"
+        p.write_text(llama_cpp_truncated_log())
+        parser = LogParser()
+        tasks = parser.parse_file(str(p))
+        assert len(tasks) == 1
+        t = tasks[0]
+        assert t.truncated == 1
+        assert t.n_tokens == 1500
+
+    def test_cli_with_real_world_log(self, tmp_path: Path, capsys):
+        """Test CLI output with a real-world log fixture."""
+        from fixtures import llama_cpp_server_speculative_decoding_log
+        p = tmp_path / "real.log"
+        p.write_text(llama_cpp_server_speculative_decoding_log())
+        result = main([str(p)])
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "100" in captured.out
+        assert "200" in captured.out
+        assert "--- Summary ---" in captured.out
+
+    def test_json_with_real_world_log(self, tmp_path: Path, capsys):
+        """Test JSON output with a real-world log fixture."""
+        from fixtures import llama_cpp_server_speculative_decoding_log
+        p = tmp_path / "real.log"
+        p.write_text(llama_cpp_server_speculative_decoding_log())
+        result = main([str(p), "--format", "json"])
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data["tasks"]) == 2
+        assert data["tasks"][0]["task_id"] == 100
+        assert data["tasks"][1]["task_id"] == 200
+        assert data["summary"]["complete_tasks"] == 2
+
+    def test_csv_with_real_world_log(self, tmp_path: Path, capsys):
+        """Test CSV output with a real-world log fixture."""
+        from fixtures import llama_cpp_server_speculative_decoding_log
+        p = tmp_path / "real.log"
+        p.write_text(llama_cpp_server_speculative_decoding_log())
+        result = main([str(p), "--format", "csv"])
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "100" in captured.out
+        assert "200" in captured.out
+
+    def test_filter_task_with_real_world_log(self, tmp_path: Path, capsys):
+        """Test --task filter with a real-world log fixture."""
+        from fixtures import llama_cpp_server_speculative_decoding_log
+        p = tmp_path / "real.log"
+        p.write_text(llama_cpp_server_speculative_decoding_log())
+        result = main([str(p), "--task", "100"])
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "100" in captured.out
+        assert "200" not in captured.out
+
+    def test_weighted_stats_with_real_world_log(self, tmp_path: Path, capsys):
+        """Test weighted statistics with a real-world log fixture."""
+        from fixtures import llama_cpp_parallel_requests_log
+        p = tmp_path / "parallel.log"
+        p.write_text(llama_cpp_parallel_requests_log())
+        result = main([str(p), "--format", "json"])
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        summary = data["summary"]
+        # Should have 3 complete tasks
+        assert summary["complete_tasks"] == 3
+        # Weighted avg should be computed correctly
+        assert summary["weighted_avg_prompt_tps"] is not None
+        assert summary["weighted_avg_output_tps"] is not None
+        # Median should be computed from individual task values
+        assert summary["median_prompt_tps"] is not None
+        assert summary["median_output_tps"] is not None

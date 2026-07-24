@@ -14,14 +14,14 @@ from .models import TaskMetrics
 _RE_PROMPT = re.compile(
     r"task\s+(\d+)"
     r".*?prompt\s+eval\s+time\s*=\s*([\d.]+)\s*ms\s*/\s*(\d+)\s*tokens"
-    r"(?:\s*\([\d.]+\s*ms\s+per\s+token,\s*([\d.]+)\s*tokens\s+per\s+second\))?"
+    r"(?:\s*\(\s*[\d.]+\s*ms\s+per\s+token,\s*([\d.]+)\s*tokens\s+per\s+second\))?"
 )
 
 # I slot print_timing: id 0 | task 2687 | eval time = 18479.88 ms / 423 tokens (43.69 ms per token, 22.89 tokens per second)
 _RE_EVAL = re.compile(
     r"task\s+(\d+)"
     r".*?eval\s+time\s*=\s*([\d.]+)\s*ms\s*/\s*(\d+)\s*tokens"
-    r"(?:\s*\([\d.]+\s*ms\s+per\s+token,\s*([\d.]+)\s*tokens\s+per\s+second\))?"
+    r"(?:\s*\(\s*[\d.]+\s*ms\s+per\s+token,\s*([\d.]+)\s*tokens\s+per\s+second\))?"
 )
 
 # I slot print_timing: id 0 | task 2687 | total time = 46662.93 ms / 14478 tokens
@@ -37,17 +37,19 @@ _RE_GRAPHS = re.compile(
 )
 
 # I slot print_timing: id 0 | task 2687 | draft acceptance = 0.28296 (191 accepted / 675 generated), mean len = 13.73
+# I slot print_timing: id 0 | task 100 | draft acceptance rate = 0.94156 ( 7556 accepted / 8026 generated), mean len = 9.42
 _RE_DRAFT = re.compile(
     r"task\s+(\d+)"
-    r".*?draft\s+acceptance\s*=\s*([\d.]+)"
-    r"\s*\((\d+)\s+accepted\s*/\s*(\d+)\s+generated\)"
-    r"(?:,\s*mean\s+len\s*=\s*([\d.]+))?"
+    r".*?draft\s+acceptance(?:\s+rate)?\s*=\s*([\d.]+)"
+    r"\s*\(\s*(\d+)\s+accepted\s*/\s*(\d+)\s+generated\)"
+    r"(?:\s*,\s*mean\s+len\s*=\s*([\d.]+))?"
 )
 
 # I slot release: id 0 | task 2687 | stop processing: n_tokens = 36752, truncated = 0
+# I slot release: id 0 | task 0 | stop processing: n_past = 281, truncated = 0
 _RE_STOP = re.compile(
     r"task\s+(\d+)"
-    r".*?stop\s+processing.*?n_tokens\s*=\s*(\d+)"
+    r".*?stop\s+processing.*?(?:n_tokens|n_past)\s*=\s*(\d+)"
     r"(?:,\s*truncated\s*=\s*(\d+))?"
 )
 
