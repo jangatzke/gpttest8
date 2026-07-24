@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Optional
 
@@ -90,11 +91,43 @@ class LogParser:
             self._parse_stop(metrics, line)
 
     def parse_file(self, filepath: str) -> list[TaskMetrics]:
-        """Parse an entire log file and return a list of TaskMetrics (in order of first appearance)."""
+        """Parse an entire log file and return a list of TaskMetrics (in order of first appearance).
+        
+        Handles both plain text log files and JSON-formatted log files (Docker/container style)
+        where each line is a JSON object with 'timestamp', 'stream', and 'text' fields.
+        """
         with open(filepath, "r", encoding="utf-8") as f:
             for line in f:
-                self.parse_line(line)
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Try to parse as JSON first (Docker/container log format)
+                processed_line = self._extract_json_text(line)
+                if processed_line is not None:
+                    self.parse_line(processed_line)
+                else:
+                    # Fall back to plain text parsing
+                    self.parse_line(line)
         return list(self._tasks.values())
+    
+    @staticmethod
+    def _extract_json_text(line: str) -> Optional[str]:
+        """Extract the 'text' field from a JSON-formatted log line if applicable.
+        
+        Returns None if the line is not JSON-formatted.
+        """
+        if not line.startswith("{"):
+            return None
+        
+        try:
+            data = json.loads(line)
+            if isinstance(data, dict) and "text" in data:
+                return data["text"]
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return None
 
     def get_tasks(self) -> list[TaskMetrics]:
         """Return all accumulated TaskMetrics in insertion order."""
